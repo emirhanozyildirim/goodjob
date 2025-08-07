@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Retansiyon & DAU Forecast Hesaplayıcı</title>
+  <style>
+    body {
+      background-color: #1e1e1e;
+      color: #f0f0f0;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: #2c2c2c;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: none;
+      background: #444;
+      color: #fff;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 16px;
+      margin-top: 20px;
+      cursor: pointer;
+      width: 100%;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    pre {
+      background: #111;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      margin-top: 20px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    hr {
+        border: 1px solid #444;
+        margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Retansiyon & DAU Forecast Hesaplayıcı</h1>
+
+    <label for="d1">D1 Retansiyon (%)</label>
+    <input type="number" id="d1" value="50" />
+
+    <label for="d7">D7 Retansiyon (%)</label>
+    <input type="number" id="d7" value="20" />
+
+    <label for="d14">D14 Retansiyon (%)</label>
+    <input type="number" id="d14" value="10" />
+
+    <label for="d30">D30 Retansiyon (%)</label>
+    <input type="number" id="d30" value="5" />
+
+    <button onclick="hesaplaDecay()">1. Decay Rate Hesapla</button>
+    <pre id="decayResult"></pre>
+
+    <button onclick="forecast()">2. 30 Günlük Retansiyon Tahmini Yap</button>
+    <pre id="forecastResult"></pre>
+
+    <hr>
+
+    <label for="dailyInstalls">Toplam Günlük Yükleme</label>
+    <input type="number" id="dailyInstalls" value="10500" />
+    
+    <button onclick="hesaplaDAU()">3. 30 Günlük DAU Tahmini Yap</button>
+    <pre id="dauResult"></pre>
+
+  </div>
+
+  <script>
+    let decay_1_7, decay_7_14, decay_14_30;
+    let curve = [];
+
+    function hesaplaDecay() {
+      const d1 = parseFloat(document.getElementById("d1").value) / 100;
+      const d7 = parseFloat(document.getElementById("d7").value) / 100;
+      const d14 = parseFloat(document.getElementById("d14").value) / 100;
+      const d30 = parseFloat(document.getElementById("d30").value) / 100;
+
+      decay_1_7 = Math.pow(d7 / d1, 1 / 6);
+      decay_7_14 = Math.pow(d14 / d7, 1 / 7);
+      decay_14_30 = Math.pow(d30 / d14, 1 / 16);
+
+      let result = "--- Periyot Bazlı Decay Rate ---\n";
+      result += `D1 - D7  : ${decay_1_7.toFixed(4)}\n`;
+      result += `D7 - D14 : ${decay_7_14.toFixed(4)}\n`;
+      result += `D14 - D30: ${decay_14_30.toFixed(4)}\n`;
+
+      document.getElementById("decayResult").innerText = result;
+    }
+
+    function forecast() {
+      if (typeof decay_1_7 === 'undefined') {
+        document.getElementById("forecastResult").innerText = "Lütfen önce 1. Adımı (Decay Rate Hesapla) çalıştırın.";
+        return;
+      }
+
+      const d1 = parseFloat(document.getElementById("d1").value) / 100;
+      const d7 = parseFloat(document.getElementById("d7").value) / 100;
+      const d14 = parseFloat(document.getElementById("d14").value) / 100;
+      const d30 = parseFloat(document.getElementById("d30").value) / 100;
+
+      curve = [];
+      curve[0] = 1.0;
+      curve[1] = d1;
+
+      for (let i = 2; i <= 7; i++) {
+        curve[i] = curve[i - 1] * decay_1_7;
+      }
+      for (let i = 8; i <= 14; i++) {
+        curve[i] = curve[i - 1] * decay_7_14;
+      }
+      for (let i = 15; i <= 30; i++) {
+        curve[i] = curve[i - 1] * decay_14_30;
+      }
+
+      curve[7] = d7;
+      curve[14] = d14;
+      curve[30] = d30;
+
+      let result = "--- Günlük Retansiyon Tahmini ---\nGün | Retansiyon (%)\n--------------------------\n";
+      for (let i = 1; i <= 30; i++) {
+        result += `${i.toString().padStart(2)}   | ${(curve[i] * 100).toFixed(2).padStart(5)}%\n`;
+      }
+
+      document.getElementById("forecastResult").innerText = result;
+    }
+
+    function hesaplaDAU() {
+      if (curve.length === 0) {
+        document.getElementById("dauResult").innerText = "Lütfen önce 2. Adımı (Retansiyon Tahmini Yap) çalıştırın.";
+        return;
+      }
+      
+      const dailyInstalls = parseInt(document.getElementById("dailyInstalls").value);
+
+      let dauForecast = [];
+      for (let day = 1; day <= 30; day++) {
+        let totalDAU = 0;
+        for (let cohortStartDay = 1; cohortStartDay <= day; cohortStartDay++) {
+          const cohortAge = day - cohortStartDay;
+          const activeUsersFromCohort = dailyInstalls * curve[cohortAge];
+          totalDAU += activeUsersFromCohort;
+        }
+        dauForecast[day] = Math.round(totalDAU);
+      }
+
+      let result = "--- Günlük DAU Tahmini ---\nGün | Aktif Kullanıcı (DAU)\n--------------------------\n";
+      for (let i = 1; i <= 30; i++) {
+        result += `${i.toString().padStart(2)}   | ${dauForecast[i].toLocaleString('tr-TR').padStart(8)}\n`;
+      }
+
+      document.getElementById("dauResult").innerText = result;
+    }
+  </script>
+</body>
+</html>
